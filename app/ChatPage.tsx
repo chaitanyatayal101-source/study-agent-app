@@ -13,6 +13,17 @@ type Message = {
   saveState?: 'idle' | 'saving' | 'saved'
 }
 
+type ChatSession = {
+  id: string
+  title: string
+  messages: Message[]
+  updatedAt: string
+}
+
+const SESSION_STORAGE_KEY = 'study-agent-chat-sessions'
+const ACTIVE_SESSION_STORAGE_KEY = 'study-agent-active-session'
+const MEMORY_ENABLED_STORAGE_KEY = 'study-agent-memory-enabled'
+
 function createId() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
 }
@@ -50,12 +61,51 @@ function buildSavePayload(message: string, subject: string, concept: string) {
   }
 }
 
+function createSession(title = 'New chat'): ChatSession {
+  return {
+    id: createId(),
+    title,
+    messages: [],
+    updatedAt: new Date().toISOString(),
+  }
+}
+
+function getSessionTitle(messages: Message[]) {
+  const firstUserMessage = messages.find((message) => message.role === 'user')?.content?.trim()
+  if (!firstUserMessage) return 'New chat'
+  return firstUserMessage.length > 24 ? `${firstUserMessage.slice(0, 24)}...` : firstUserMessage
+}
+
+function loadStoredSessions() {
+  if (typeof window === 'undefined') {
+    return { sessions: [], activeSessionId: null, memoryEnabled: true }
+  }
+
+  try {
+    const storedSessions = window.localStorage.getItem(SESSION_STORAGE_KEY)
+    const storedActiveId = window.localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY)
+    const storedMemoryEnabled = window.localStorage.getItem(MEMORY_ENABLED_STORAGE_KEY)
+
+    return {
+      sessions: storedSessions ? (JSON.parse(storedSessions) as ChatSession[]) : [],
+      activeSessionId: storedActiveId ?? null,
+      memoryEnabled: storedMemoryEnabled === null ? true : (JSON.parse(storedMemoryEnabled) as boolean),
+    }
+  } catch {
+    return { sessions: [], activeSessionId: null, memoryEnabled: true }
+  }
+}
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
+  const [sessions, setSessions] = useState<ChatSession[]>([])
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+  const [memoryEnabled, setMemoryEnabled] = useState(true)
+  const [ready, setReady] = useState(false)
 
-  const isTyping = input.trim().length > 0
   const showActivePalette = true
 
   useEffect(() => {
@@ -72,9 +122,88 @@ export default function ChatPage() {
     }
   }, [isLoading])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const stored = loadStoredSessions()
+    if (stored.sessions.length) {
+      const initialSessionId = stored.activeSessionId ?? stored.sessions[0].id
+      const initialSession = stored.sessions.find((session) => session.id === initialSessionId) ?? stored.sessions[0]
+
+      setSessions(stored.sessions)
+      setActiveSessionId(initialSessionId)
+      setMessages(initialSession?.messages ?? [])
+    } else {
+      const newSession = createSession('New chat')
+      setSessions([newSession])
+      setActiveSessionId(newSession.id)
+      setMessages([])
+    }
+
+    setMemoryEnabled(stored.memoryEnabled)
+    setReady(true)
+  }, [])
+
+  useEffect(() => {
+    if (!ready || typeof window === 'undefined') return
+
+    if (!memoryEnabled) {
+      window.localStorage.setItem(MEMORY_ENABLED_STORAGE_KEY, JSON.stringify(false))
+      return
+    }
+
+    window.localStorage.setItem(MEMORY_ENABLED_STORAGE_KEY, JSON.stringify(true))
+    window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessions))
+    if (activeSessionId) {
+      window.localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, activeSessionId)
+    }
+  }, [activeSessionId, memoryEnabled, ready, sessions])
+
+  useEffect(() => {
+    if (!ready || !activeSessionId) return
+
+    setSessions((prev) =>
+      prev.map((session) =>
+        session.id === activeSessionId
+          ? {
+              ...session,
+              messages,
+              title: getSessionTitle(messages),
+              updatedAt: new Date().toISOString(),
+            }
+          : session
+      )
+    )
+  }, [activeSessionId, messages, ready])
+
+  function handleNewChat() {
+    const newSession = createSession('New chat')
+    setSessions((prev) => [newSession, ...prev])
+    setActiveSessionId(newSession.id)
+    setMessages([])
+    setInput('')
+    setShowHistory(false)
+  }
+
+  function handleOpenSession(sessionId: string) {
+    const selectedSession = sessions.find((session) => session.id === sessionId)
+    if (!selectedSession) return
+
+    setActiveSessionId(sessionId)
+    setMessages(selectedSession.messages)
+    setShowHistory(false)
+  }
+
   async function handleSend() {
     const trimmed = input.trim()
     if (!trimmed || isLoading) return
+
+    if (!activeSessionId) {
+      const newSession = createSession('New chat')
+      setSessions((prev) => [newSession, ...prev])
+      setActiveSessionId(newSession.id)
+      setMessages([])
+    }
 
     const userMessage: Message = {
       id: createId(),
@@ -82,7 +211,8 @@ export default function ChatPage() {
       content: trimmed,
     }
 
-    setMessages((prev) => [...prev, userMessage])
+    const nextMessages = [...messages, userMessage]
+    setMessages(nextMessages)
     setInput('')
     setIsLoading(true)
 
@@ -218,11 +348,74 @@ export default function ChatPage() {
           showActivePalette ? 'border-[#ff5a36]/60' : 'border-red-200/60'
         }`}
       >
-        <h1 className="text-xl font-semibold">Study Agent</h1>
-        <p className="mt-1 text-sm text-slate-400">
-          Ask a concept question and I will tutor you in real time.
-        </p>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h1 className="text-xl font-semibold">Study Agent</h1>
+            <p className="mt-1 text-sm text-slate-400">
+              Ask a concept question and I will tutor you in real time.
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              {memoryEnabled
+                ? 'Your chats are saved locally on this device, even after you close the tab.'
+                : 'Memory is paused. Chats will not be stored on this device.'}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={handleNewChat}
+              className="rounded-full border border-slate-700 bg-slate-900/80 px-3 py-1.5 text-sm text-slate-200 transition hover:border-cyan-400 hover:text-white"
+            >
+              New chat
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowHistory((prev) => !prev)}
+              className="rounded-full border border-slate-700 bg-slate-900/80 px-3 py-1.5 text-sm text-slate-200 transition hover:border-cyan-400 hover:text-white"
+            >
+              {showHistory ? 'Hide history' : 'View history'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMemoryEnabled((prev) => !prev)}
+              className="rounded-full border border-slate-700 bg-slate-900/80 px-3 py-1.5 text-sm text-slate-200 transition hover:border-cyan-400 hover:text-white"
+            >
+              {memoryEnabled ? 'Memory: On' : 'Memory: Off'}
+            </button>
+          </div>
+        </div>
       </header>
+
+      {showHistory && (
+        <section className="rounded-2xl border border-slate-800 bg-slate-950/80 p-3 shadow-lg shadow-slate-950/30">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-100">Previous chats</h2>
+            <span className="text-xs text-slate-500">Saved locally</span>
+          </div>
+          <div className="flex flex-col gap-2">
+            {sessions.length === 0 && <p className="text-sm text-slate-500">No saved chats yet.</p>}
+            {sessions.map((session) => (
+              <button
+                key={session.id}
+                type="button"
+                onClick={() => handleOpenSession(session.id)}
+                className={`rounded-xl border px-3 py-2 text-left text-sm transition ${
+                  activeSessionId === session.id
+                    ? 'border-cyan-400/50 bg-cyan-500/10 text-cyan-100'
+                    : 'border-slate-800 bg-slate-900/70 text-slate-300 hover:border-slate-700 hover:text-white'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium">{session.title}</span>
+                  <span className="text-xs text-slate-500">
+                    {new Date(session.updatedAt).toLocaleDateString()}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section
         className={`flex-1 overflow-y-auto rounded-2xl border bg-slate-950/70 p-3 sm:p-4 ${
