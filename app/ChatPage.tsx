@@ -82,17 +82,49 @@ function loadStoredSessions() {
   }
 
   try {
-    const storedSessions = window.localStorage.getItem(SESSION_STORAGE_KEY)
+    const storedValue = window.localStorage.getItem(SESSION_STORAGE_KEY)
     const storedActiveId = window.localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY)
     const storedMemoryEnabled = window.localStorage.getItem(MEMORY_ENABLED_STORAGE_KEY)
 
+    if (storedValue) {
+      const parsedValue = JSON.parse(storedValue) as Partial<{ sessions: ChatSession[]; activeSessionId: string | null; memoryEnabled: boolean }>
+      if (Array.isArray(parsedValue.sessions)) {
+        return {
+          sessions: parsedValue.sessions,
+          activeSessionId: parsedValue.activeSessionId ?? storedActiveId ?? null,
+          memoryEnabled: parsedValue.memoryEnabled ?? (storedMemoryEnabled === null ? true : (JSON.parse(storedMemoryEnabled) as boolean)),
+        }
+      }
+    }
+
     return {
-      sessions: storedSessions ? (JSON.parse(storedSessions) as ChatSession[]) : [],
+      sessions: storedValue ? (JSON.parse(storedValue) as ChatSession[]) : [],
       activeSessionId: storedActiveId ?? null,
       memoryEnabled: storedMemoryEnabled === null ? true : (JSON.parse(storedMemoryEnabled) as boolean),
     }
   } catch {
     return { sessions: [], activeSessionId: null, memoryEnabled: true }
+  }
+}
+
+function persistSessionsToStorage(sessions: ChatSession[], activeSessionId: string | null, memoryEnabled: boolean) {
+  if (typeof window === 'undefined') return
+
+  const safeSessions = sessions.length ? sessions : []
+  const currentActiveSessionId = activeSessionId ?? safeSessions[0]?.id ?? null
+
+  window.localStorage.setItem(
+    SESSION_STORAGE_KEY,
+    JSON.stringify({
+      sessions: safeSessions,
+      activeSessionId: currentActiveSessionId,
+      memoryEnabled,
+    })
+  )
+  window.localStorage.setItem(MEMORY_ENABLED_STORAGE_KEY, JSON.stringify(memoryEnabled))
+
+  if (currentActiveSessionId) {
+    window.localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, currentActiveSessionId)
   }
 }
 
@@ -148,17 +180,19 @@ export default function ChatPage() {
   useEffect(() => {
     if (!ready || typeof window === 'undefined') return
 
-    if (!memoryEnabled) {
-      window.localStorage.setItem(MEMORY_ENABLED_STORAGE_KEY, JSON.stringify(false))
-      return
+    persistSessionsToStorage(sessions, activeSessionId, memoryEnabled)
+  }, [activeSessionId, memoryEnabled, ready, sessions])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const handleBeforeUnload = () => {
+      persistSessionsToStorage(sessions, activeSessionId, memoryEnabled)
     }
 
-    window.localStorage.setItem(MEMORY_ENABLED_STORAGE_KEY, JSON.stringify(true))
-    window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessions))
-    if (activeSessionId) {
-      window.localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, activeSessionId)
-    }
-  }, [activeSessionId, memoryEnabled, ready, sessions])
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [activeSessionId, memoryEnabled, sessions])
 
   useEffect(() => {
     if (!ready || !activeSessionId) return
