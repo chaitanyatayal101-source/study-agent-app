@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-import { createClient } from '@/lib/supabase'
+import { createServerSupabaseClient } from '@/lib/supabase'
 
 export async function POST(request: Request) {
   const body = await request.json()
@@ -27,25 +27,45 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'subject and concept are required' }, { status: 400 })
   }
 
-  const supabase = createClient()
+  const supabase = await createServerSupabaseClient()
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser()
 
-  const { error } = await supabase.from('concepts').upsert(
-    {
-      subject,
-      concept,
-      mastery_level: masteryLevel,
-      overview_gist: overviewGist,
-      deep_dive_gist: deepDiveGist,
-      strong_areas: strongAreas,
-      weak_areas: weakAreas,
-      next_steps: nextSteps,
-      notes,
-      last_updated: new Date().toISOString(),
-    },
-    {
-      onConflict: 'subject,concept',
-    }
-  )
+  if (userError || !user) {
+    return NextResponse.json({ error: 'Please sign in to save your progress.' }, { status: 401 })
+  }
+
+  const payload = {
+    user_id: user.id,
+    subject,
+    concept,
+    mastery_level: masteryLevel,
+    overview_gist: overviewGist,
+    deep_dive_gist: deepDiveGist,
+    strong_areas: strongAreas,
+    weak_areas: weakAreas,
+    next_steps: nextSteps,
+    notes,
+    last_updated: new Date().toISOString(),
+  }
+
+  const { data: existing, error: lookupError } = await supabase
+    .from('concepts')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('subject', subject)
+    .eq('concept', concept)
+    .maybeSingle()
+
+  if (lookupError) {
+    return NextResponse.json({ error: lookupError.message }, { status: 500 })
+  }
+
+  const { error } = existing?.id
+    ? await supabase.from('concepts').update(payload).eq('id', existing.id)
+    : await supabase.from('concepts').insert(payload)
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })

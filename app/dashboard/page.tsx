@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase'
+import { createServerSupabaseClient } from '@/lib/supabase'
 
 import PageShell from '../components/PageShell'
 import DashboardClient from './DashboardClient'
@@ -16,8 +16,25 @@ type ConceptRow = {
 }
 
 export default async function DashboardPage() {
-  const supabase = createClient()
-  const { data, error } = await supabase.from('concepts').select('*').order('last_updated', { ascending: false })
+  const supabase = await createServerSupabaseClient()
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser()
+
+  if (userError || !user) {
+    return (
+      <PageShell maxWidth="max-w-6xl">
+        <DashboardClient concepts={[]} errorMessage="Please sign in to view your saved concepts." />
+      </PageShell>
+    )
+  }
+
+  const { data, error } = await supabase
+    .from('concepts')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('last_updated', { ascending: false })
 
   const concepts = (data ?? []) as ConceptRow[]
 

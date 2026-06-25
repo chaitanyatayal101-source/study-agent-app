@@ -3,7 +3,7 @@ import { streamText } from 'ai'
 import { NextResponse } from 'next/server'
 
 import { getAnthropicApiKey, getAnthropicApiKeyError } from '@/lib/ai-config'
-import { createClient } from '@/lib/supabase'
+import { createServerSupabaseClient } from '@/lib/supabase'
 
 export async function POST(request: Request) {
   const body = await request.json()
@@ -13,11 +13,16 @@ export async function POST(request: Request) {
 
   let systemPrompt = `You are a study tutor. Respond in a clear, supportive way. Keep the explanation concise but helpful.`
 
-  if (subject && concept) {
-    const supabase = createClient()
+  const supabase = await createServerSupabaseClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (subject && concept && user?.id) {
     const { data, error } = await supabase
       .from('concepts')
       .select('*')
+      .eq('user_id', user.id)
       .eq('subject', subject)
       .eq('concept', concept)
       .maybeSingle()
