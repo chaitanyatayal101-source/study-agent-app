@@ -105,6 +105,7 @@ export default function ChatPage() {
   const [showHistory, setShowHistory] = useState(false)
   const [memoryEnabled, setMemoryEnabled] = useState(true)
   const [ready, setReady] = useState(false)
+  const [saveProgressState, setSaveProgressState] = useState<'idle' | 'saving' | 'saved'>('idle')
 
   const showActivePalette = true
 
@@ -275,7 +276,7 @@ export default function ChatPage() {
                 pending: false,
                 subject,
                 concept,
-                showSaveButton: Boolean(subject && concept && streamed.trim()),
+                showSaveButton: Boolean(streamed.trim()),
                 saveState: 'idle',
               }
             : message
@@ -299,7 +300,10 @@ export default function ChatPage() {
   }
 
   async function handleSave(message: Message) {
-    if (!message.subject || !message.concept) return
+    const subject = (message.subject ?? '').trim() || (typeof window !== 'undefined' ? window.prompt('Enter the subject', '')?.trim() ?? '' : '')
+    const concept = (message.concept ?? '').trim() || (typeof window !== 'undefined' ? window.prompt('Enter the concept', '')?.trim() ?? '' : '')
+
+    if (!subject || !concept || !message.content.trim()) return
 
     setMessages((prev) =>
       prev.map((item) =>
@@ -308,7 +312,7 @@ export default function ChatPage() {
     )
 
     try {
-      const payload = buildSavePayload(message.content, message.subject, message.concept)
+      const payload = buildSavePayload(message.content, subject, concept)
       const response = await fetch('/api/save-concept', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -330,6 +334,36 @@ export default function ChatPage() {
           item.id === message.id ? { ...item, saveState: 'idle' } : item
         )
       )
+    }
+  }
+
+  async function handleSaveLatestProgress() {
+    const latestAssistantMessage = [...messages].reverse().find((message) => message.role === 'assistant' && message.content.trim() && !message.pending)
+
+    if (!latestAssistantMessage) return
+
+    const subject = (latestAssistantMessage.subject ?? '').trim() || (typeof window !== 'undefined' ? window.prompt('Enter the subject', '')?.trim() ?? '' : '')
+    const concept = (latestAssistantMessage.concept ?? '').trim() || (typeof window !== 'undefined' ? window.prompt('Enter the concept', '')?.trim() ?? '' : '')
+
+    if (!subject || !concept || !latestAssistantMessage.content.trim()) return
+
+    setSaveProgressState('saving')
+
+    try {
+      const payload = buildSavePayload(latestAssistantMessage.content, subject, concept)
+      const response = await fetch('/api/save-concept', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        throw new Error('Unable to save progress right now.')
+      }
+
+      setSaveProgressState('saved')
+    } catch {
+      setSaveProgressState('idle')
     }
   }
 
@@ -374,6 +408,17 @@ export default function ChatPage() {
               className="rounded-full border border-slate-700 bg-slate-900/80 px-3 py-1.5 text-sm text-slate-200 transition hover:border-cyan-400 hover:text-white"
             >
               {showHistory ? 'Hide history' : 'View history'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSaveLatestProgress()}
+              className="rounded-full border border-slate-700 bg-slate-900/80 px-3 py-1.5 text-sm text-slate-200 transition hover:border-cyan-400 hover:text-white"
+            >
+              {saveProgressState === 'saving'
+                ? 'Saving...'
+                : saveProgressState === 'saved'
+                  ? 'Saved'
+                  : 'Save progress'}
             </button>
             <button
               type="button"
