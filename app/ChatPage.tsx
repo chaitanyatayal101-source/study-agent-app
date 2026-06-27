@@ -70,6 +70,18 @@ function createSession(title = 'New chat'): ChatSession {
   }
 }
 
+function formatSessionDate(value?: string) {
+  if (!value) return 'Unknown'
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 function getSessionTitle(messages: Message[]) {
   const firstUserMessage = messages.find((message) => message.role === 'user')?.content?.trim()
   if (!firstUserMessage) return 'New chat'
@@ -487,7 +499,7 @@ export default function ChatPage() {
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-medium">{session.title}</span>
                   <span className="text-xs text-slate-500">
-                    {new Date(session.updatedAt).toLocaleDateString()}
+                    {formatSessionDate(session.updatedAt)}
                   </span>
                 </div>
               </button>
