@@ -1,8 +1,8 @@
-import { createAnthropic } from '@ai-sdk/anthropic'
+import { createGroq } from '@ai-sdk/groq'
 import { streamText } from 'ai'
 import { NextResponse } from 'next/server'
 
-import { getAnthropicApiKey, getAnthropicApiKeyError } from '@/lib/ai-config'
+import { getGroqApiKey, getGroqApiKeyError } from '@/lib/ai-config'
 import { createServerSupabaseClient } from '@/lib/supabase'
 
 export async function POST(request: Request) {
@@ -49,8 +49,8 @@ export async function POST(request: Request) {
     }
   }
 
-  const apiKey = getAnthropicApiKey()
-  const authError = getAnthropicApiKeyError()
+  const apiKey = getGroqApiKey()
+  const authError = getGroqApiKeyError()
 
   if (!apiKey) {
     return new NextResponse(authError ?? 'The AI service is not configured right now. Please try again later.', {
@@ -61,7 +61,7 @@ export async function POST(request: Request) {
 
   try {
     const result = streamText({
-      model: createAnthropic({ apiKey })('claude-sonnet-4-5'),
+      model: createGroq({ apiKey })('llama-3.3-70b-versatile'),
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     })

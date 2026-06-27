@@ -1,20 +1,20 @@
-function readAnthropicApiKeyFromEnv(): string | null {
-  return process.env.ANTHROPIC_API_KEY?.trim() || null
+function readGroqApiKeyFromEnv(): string | null {
+  return process.env.GROQ_API_KEY?.trim() || null
 }
 
-export function getAnthropicApiKey(): string | null {
-  return readAnthropicApiKeyFromEnv()
+export function getGroqApiKey(): string | null {
+  return readGroqApiKeyFromEnv()
 }
 
-export function getAnthropicApiKeyError(): string | null {
-  const apiKey = readAnthropicApiKeyFromEnv()
+export function getGroqApiKeyError(): string | null {
+  const apiKey = readGroqApiKeyFromEnv()
 
   if (!apiKey) {
-    return 'No Anthropic key was found. Set ANTHROPIC_API_KEY with a value starting with sk-ant-.'
+    return 'No Groq key was found. Set GROQ_API_KEY with a value starting with gsk_.'
   }
 
-  if (!apiKey.startsWith('sk-ant-')) {
-    return 'The configured key is not a valid Anthropic key. Use a key that starts with sk-ant-.'
+  if (!apiKey.startsWith('gsk_')) {
+    return 'The configured key is not a valid Groq key. Use a key that starts with gsk_.'
   }
 
   return null

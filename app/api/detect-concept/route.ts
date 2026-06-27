@@ -1,8 +1,8 @@
-import { createAnthropic } from '@ai-sdk/anthropic'
+import { createGroq } from '@ai-sdk/groq'
 import { generateText } from 'ai'
 import { NextResponse } from 'next/server'
 
-import { getAnthropicApiKey } from '@/lib/ai-config'
+import { getGroqApiKey } from '@/lib/ai-config'
 
 export async function POST(request: Request) {
   const body = await request.json()
@@ -16,7 +16,7 @@ Return only valid JSON in this exact shape:
 Message:
 ${userMessage}`
 
-  const apiKey = getAnthropicApiKey()
+  const apiKey = getGroqApiKey()
 
   if (!apiKey) {
     return NextResponse.json({ subject: '', concept: '' })
@@ -24,7 +24,7 @@ ${userMessage}`
 
   try {
     const result = await generateText({
-      model: createAnthropic({ apiKey })('claude-sonnet-4-5'),
+      model: createGroq({ apiKey })('llama-3.3-70b-versatile'),
       prompt,
     })
 
